@@ -59,27 +59,28 @@ def initialize()
         subscribe(sensor, "temperature", temperatureHandler)
     def lastTemp = getTemperatures()
     log.debug "lastTemp($lastTemp)"
-    subscribe(location)
-    subscribe(app)
+    subscribe(location, changedLocationMode)
+    subscribe(app, appTouch)
     setSetpoint(lastTemp)
 }
 
 def double getTemperatures()
 {
-    def lastTemp = 0
     def currentTemp = 0
     def numSensors = 0
     for (sensor in sensors)
     {
-        if (sensor.currentTemperature != null)
+        if (sensor.latestValue("temperature") != null)
         {
-            currentTemp = sensor.currentTemperature
-            lastTemp = lastTemp + currentTemp
+            currentTemp = currentTemp + sensor.latestValue("temperature")
             numSensors = numSensors + 1
         }
     }
-    lastTemp = lastTemp / numSensors
-    return lastTemp
+    if (currentTemp != 0 && numSensors != 0)
+    {
+        currentTemp = currentTemp / numSensors
+    }
+    return currentTemp
 }
 
 def setSetpoint(lastTemp)
