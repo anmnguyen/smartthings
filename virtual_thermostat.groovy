@@ -92,7 +92,6 @@ def initialize()
         subscribe(sensor, "temperature", evtHandler)
     for (sensor in humiditySensors)
         subscribe(sensor, "humidity", evtHandler)
-
     subscribe(location, changedLocationMode)
     subscribe(app, appTouch)
     
@@ -104,7 +103,13 @@ def initialize()
 
     def feelsLike = getFeelsLike(temp, humidity)
     log.debug "Feels Like: $feelsLike"       
-
+	
+    //Keeps track of whether or not the outlets are turned on by the app. This is to 
+    //prevent sending too many commands if it is taking awhile to cool or heat. Note: If  
+    //the user manually  changes the state of an outlet, it will stay in that state until 
+    //the threshold is triggered again.
+	state.outlets = ""
+    
     setSetpoint(feelsLike)
 }
 
@@ -199,22 +204,30 @@ def appTouch(evt)
 private evaluate(currentTemp, desiredHeatTemp, desiredCoolTemp)
 {
     log.debug "Evaluating temperature ($currentTemp, $desiredHeatTemp, $desiredCoolTemp, $mode)"
-    if (mode == "cool") {
+    if (mode == "Cooling") {
         // Cooling
-        if (currentTemp - desiredCoolTemp > onThreshold) {
+        if (currentTemp - desiredCoolTemp >= onThreshold && state.outlets != "on") {
             coolOutlets.on()
+            state.outlets = "on"
+            log.debug "Need to cool: Turning outlets on"
         }
-        else if (desiredCoolTemp - currentTemp >= offThreshold) {
+        else if (desiredCoolTemp - currentTemp >= offThreshold && state.outlets != "off") {
             coolOutlets.off()
+            state.outlets = "off"
+            log.debug "Done cooling: Turning outlets off"
         }
     }
     else {
         // Heating
-        if (desiredHeatTemp - currentTemp > onThreshold) {
+        if (desiredHeatTemp - currentTemp >= onThreshold && state.outlets != "on") {
             heatOutlets.on()
+            state.outlets = "on"
+            log.debug "Need to heat: Turning outlets on"
         }
-        else if (currentTemp - desiredHeatTemp >= offThreshold) {
+        else if (currentTemp - desiredHeatTemp >= offThreshold && state.outlets != "off") {
             heatOutlets.off()
+            state.outlets = "off"
+            log.debug "Done heating: Turning outlets off"
         }
     }
 }
