@@ -6,7 +6,7 @@
 */
 definition(
     name: "Virtual Thermostat - Nest without a Nest",
-    namespace: "amn0408",
+    namespace: "anmnguyen",
     author: "An Nguyen",
     description: "A virtual thermostat for homes not compatible with Nest. Get enhanced control over your heating and cooling devices with temperature readings from multiple sensors, mode-based thermostat settings, and if you have a humidity sensor, feels-like temperatures. Based on the original Virtual Thermostat and Green Thermostat apps.",
     category: "Green Living",
@@ -26,30 +26,20 @@ preferences {
             paragraph "Let's tell the virtual thermostat about your desired temperatures."
         }
         section("When home during the day,") {
-                input "homeHeat",  "decimal", title:"Set heating temperature to (ex. 72)", required:true
-                input "homeCool",  "decimal", title:"Set cooling temperature to (ex. 76)", required:true
+                input "homeTemp",  "decimal", title:"Set temperature to", required:true
         }
         section("When home at night") {
-            input "nightHeat", "decimal", title:"Set heating temperature to (ex. 68)", required: true
-            input "nightCool", "decimal", title:"Set cooling temperature to (ex. 80)", required: true
+            input "nightTemp", "decimal", title:"Set temperature to", required: true
         }
         section("When away") {
-            input "awayHeat", "decimal", title:"Set heating temperature to (ex. 60)", required: true
-            input "awayCool", "decimal", title:"Set cooling temperature to (ex. 85)", required: true
+            input "awayTemp", "decimal", title:"Set temperature to", required: true
         }
     }
     page(name: "sensitivityPage", title:"Sensitivity", nextPage:"sensorsPage") {
         section(){
-            paragraph "Let's tell the virtual thermostat how sensitive to be. Most thermostats use 2 degree changes to control switches. Smaller values lead to more consistent temperatures, but will turn switches on and off more often."
+            paragraph "Let's tell the virtual thermostat how sensitive to be to temperature changes. The more sensitive the thermostat, the more it will turn on and off the outlets."
+            input "sensitivity", "enum", title: "Thermostat should keep temperature should be within ", metadata: [values: ["1 degree","2 degrees", "3 degrees"]], required:true   
         } 
-        section(){
-            paragraph "Let's tell the thermostat when to turn switches on."
-            input "onThreshold", "decimal", title: "Turn on when temperature is this far from setpoint", required: true
-        }
-        section(){
-            paragraph "Let's tell the thermostat when to turn off."
-            input "offThreshold", "decimal", title: "Turn off when temperature reaches & goes this far beyond setpoint", required: true
-        }
     }
     page(name: "sensorsPage", title:"Sensors", nextPage: "switchesPage") {
         section(){
@@ -94,6 +84,8 @@ def initialize()
         subscribe(sensor, "humidity", evtHandler)
     subscribe(location, changedLocationMode)
     subscribe(app, appTouch)
+    subscribe(heatOutlets, "switch", switchHandler)
+    subscribe(coolOutlets, "switch", switchHandler)
     
     def temp = getReadings("temperature")
     log.debug "Temp: $temp"
@@ -103,12 +95,6 @@ def initialize()
 
     def feelsLike = getFeelsLike(temp, humidity)
     log.debug "Feels Like: $feelsLike"       
-	
-    //Keeps track of whether or not the outlets are turned on by the app. This is to 
-    //prevent sending too many commands if it is taking awhile to cool or heat. Note: If  
-    //the user manually  changes the state of an outlet, it will stay in that state until 
-    //the threshold is triggered again.
-	state.outlets = ""
     
     setSetpoint(feelsLike)
 }
@@ -161,13 +147,13 @@ def double getFeelsLike(t,h)
 def setSetpoint(temp)
 {
     if (location.mode == "Home" ) {
-        evaluate(temp, homeHeat, homeCool)
+        evaluate(temp, homeTemp)
     }
     if (location.mode == "Away" ) {
-        evaluate(temp, awayHeat, awayCool)
+        evaluate(temp, awayTemp)
     }
     if (location.mode == "Night" ) {
-        evaluate(temp, nightHeat, nightCool)
+        evaluate(temp, nightTemp)
     }
 }
 
@@ -200,35 +186,53 @@ def appTouch(evt)
     evtHandler(evt)
 }
 
-//Function evaluation: Evaluates temperature and control outlets
-private evaluate(currentTemp, desiredHeatTemp, desiredCoolTemp)
+//Function evaluate: Evaluates temperature and control outlets
+private evaluate(currentTemp, desiredTemp)
 {
-    log.debug "Evaluating temperature ($currentTemp, $desiredHeatTemp, $desiredCoolTemp, $mode)"
+    log.debug "Evaluating temperature ($currentTemp, $desiredTemp, $mode)"
+    def onThreshold = 1
+    def offThreshold = 1
+    switch (sensitivity) {
+        case "2 degrees":
+            onThreshold = 2
+            offThreshold = 2
+            break
+        case "3 degrees":
+            onThreshold = 3
+            offThreshold = 3
+            break
+    }
+
     if (mode == "Cooling") {
         // Cooling
-        if (currentTemp - desiredCoolTemp >= onThreshold && state.outlets != "on") {
+        if (currentTemp - desiredTemp >= onThreshold && state.outlets != "on") {
             coolOutlets.on()
-            state.outlets = "on"
             log.debug "Need to cool: Turning outlets on"
         }
-        else if (desiredCoolTemp - currentTemp >= offThreshold && state.outlets != "off") {
+        else if (desiredTemp - currentTemp >= offThreshold && state.outlets != "off") {
             coolOutlets.off()
-            state.outlets = "off"
             log.debug "Done cooling: Turning outlets off"
         }
     }
     else {
         // Heating
-        if (desiredHeatTemp - currentTemp >= onThreshold && state.outlets != "on") {
+        if (desiredTemp - currentTemp >= onThreshold && state.outlets != "on") {
             heatOutlets.on()
-            state.outlets = "on"
             log.debug "Need to heat: Turning outlets on"
         }
-        else if (currentTemp - desiredHeatTemp >= offThreshold && state.outlets != "off") {
+        else if (currentTemp - desiredTemp >= offThreshold && state.outlets != "off") {
             heatOutlets.off()
-            state.outlets = "off"
             log.debug "Done heating: Turning outlets off"
         }
+    }
+}
+
+//Function switchHandler: Sets state of outlets to on/off if one or more outlets is on/off
+def switchHandler(evt) {
+    if (evt.value == "on") {
+        state.outlets = "on"
+    } else if (evt.value == "off") {
+        state.outlets = "off"
     }
 }
 
